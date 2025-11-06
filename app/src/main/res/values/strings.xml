@@ -1,0 +1,28 @@
+<resources>
+    <string name="app_name">OutfitTracker</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">Home</string>
+    <string name="nav_wardrobe">Wardrobe</string>
+    <string name="nav_camera">Camera</string>
+    <string name="nav_outfits">Outfits</string>
+    <string name="nav_profile">Profile</string>
+
+    <!-- Camera -->
+    <string name="take_photo">Take Photo</string>
+    <string name="retake_photo">Retake</string>
+    <string name="use_photo">Use Photo</string>
+    <string name="camera_permission_required">Camera permission is required</string>
+    <string name="storage_permission_required">Storage permission is required</string>
+
+    <!-- Home Screen -->
+    <string name="welcome_message">Welcome back!</string>
+    <string name="todays_outfit">Today\'s Outfit</string>
+    <string name="capture_outfit">Capture Your Outfit</string>
+    <string name="recent_outfits">Recent Outfits</string>
+
+    <!-- General -->
+    <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
+    <string name="error">Error</string>
+</resources>
