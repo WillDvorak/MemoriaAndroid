@@ -60,6 +60,17 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 
+    // Firebase
+    implementation(platform("com.google.firebase:firebase-bom:33.5.1"))
+    implementation("com.google.firebase:firebase-auth-ktx")
+    implementation("com.google.firebase:firebase-database-ktx")
+
+    // Google Sign-In
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
+
+    // Lifecycle ViewModel for Compose
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+
 
     // Core Android
     implementation("androidx.core:core-ktx:1.12.0")
@@ -88,4 +99,7 @@ dependencies {
     // Lifecycle
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.7.0")
+
+
+
 }
