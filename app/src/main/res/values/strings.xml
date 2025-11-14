@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">OutfitTracker</string>
+    <string name="app_name">Memoria</string>
 
     <!-- Navigation -->
     <string name="nav_home">Home</string>
@@ -25,4 +25,7 @@
     <string name="ok">OK</string>
     <string name="cancel">Cancel</string>
     <string name="error">Error</string>
+
+
+
 </resources>
