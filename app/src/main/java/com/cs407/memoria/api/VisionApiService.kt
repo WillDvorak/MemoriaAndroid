@@ -2,8 +2,9 @@ package com.cs407.memoria.api
 
 import android.util.Base64
 import android.util.Log
+import com.cs407.memoria.model.BoundingBox
 import com.cs407.memoria.model.ClothingCategory
-import com.cs407.memoria.model.ClothingItem
+import com.cs407.memoria.model.DetectedClothingItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -21,16 +22,17 @@ class VisionApiService(private val apiKey: String) {
         private const val VISION_API_URL = "https://vision.googleapis.com/v1/images:annotate"
     }
 
-    suspend fun detectClothing(imageBase64: String, userId: String): List<ClothingItem> = withContext(Dispatchers.IO) {
-        try {
-            val requestBody = buildRequestBody(imageBase64)
-            val response = makeApiRequest(requestBody)
-            return@withContext parseClothingItems(response, userId)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error detecting clothing", e)
-            emptyList()
+    suspend fun detectClothing(imageBase64: String, userId: String): List<DetectedClothingItem> =
+        withContext(Dispatchers.IO) {
+            try {
+                val requestBody = buildRequestBody(imageBase64)
+                val response = makeApiRequest(requestBody)
+                return@withContext parseDetectedItems(response, userId)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error detecting clothing", e)
+                emptyList()
+            }
         }
-    }
 
     private fun buildRequestBody(imageBase64: String): String {
         val jsonRequest = JSONObject().apply {
@@ -47,6 +49,10 @@ class VisionApiService(private val apiKey: String) {
                         put(JSONObject().apply {
                             put("type", "OBJECT_LOCALIZATION")
                             put("maxResults", 20)
+                        })
+                        put(JSONObject().apply {
+                            put("type", "IMAGE_PROPERTIES")
+                            put("maxResults", 10)
                         })
                     })
                 })
@@ -77,8 +83,8 @@ class VisionApiService(private val apiKey: String) {
         }
     }
 
-    private fun parseClothingItems(response: String, userId: String): List<ClothingItem> {
-        val detectedItems = mutableListOf<ClothingItem>()
+    private fun parseDetectedItems(response: String, userId: String): List<DetectedClothingItem> {
+        val detectedItems = mutableListOf<DetectedClothingItem>()
         val jsonResponse = JSONObject(response)
 
         val responses = jsonResponse.optJSONArray("responses") ?: return emptyList()
@@ -86,55 +92,187 @@ class VisionApiService(private val apiKey: String) {
 
         val firstResponse = responses.getJSONObject(0)
 
-        // Parse label annotations
-        val labels = firstResponse.optJSONArray("labelAnnotations")
-        val labelSet = mutableSetOf<String>()
-        labels?.let {
-            for (i in 0 until it.length()) {
-                val label = it.getJSONObject(i).getString("description").lowercase()
-                labelSet.add(label)
-                Log.d(TAG, "Label detected: $label")
-            }
-        }
+        // Extract dominant colors
+        val colors = extractColors(firstResponse)
+        Log.d(TAG, "Detected ${colors.size} colors")
 
-        // Parse object localizations
+        // Extract labels
+        val labels = extractLabels(firstResponse)
+        Log.d(TAG, "Detected ${labels.size} labels")
+
+        // Extract objects with bounding boxes
         val objects = firstResponse.optJSONArray("localizedObjectAnnotations")
         objects?.let {
             for (i in 0 until it.length()) {
                 val obj = it.getJSONObject(i)
                 val name = obj.getString("name").lowercase()
-                Log.d(TAG, "Object detected: $name")
-                labelSet.add(name)
+                val confidence = obj.getDouble("score").toFloat()
+
+                // Extract bounding box
+                val boundingBox = extractBoundingBox(obj)
+
+                Log.d(TAG, "Object detected: $name (confidence: $confidence)")
+
+                // Try to categorize this object as clothing
+                val category = categorizeName(name)
+                if (category != null) {
+                    // Find related labels for this object
+                    val relatedLabels = findRelatedLabels(name, labels)
+
+                    detectedItems.add(
+                        DetectedClothingItem(
+                            category = category,
+                            labels = relatedLabels,
+                            colors = colors,
+                            boundingBox = boundingBox,
+                            confidence = confidence
+                        )
+                    )
+                }
             }
         }
 
-        // Categorize detected items
-        val categories = mapLabelsToCategories(labelSet)
-        categories.forEach { category ->
-            detectedItems.add(
-                ClothingItem(
-                    id = "",
-                    imageUrl = "",
-                    category = category,
-                    userId = userId
+        // If no objects were detected, try categorizing from labels alone
+        if (detectedItems.isEmpty() && labels.isNotEmpty()) {
+            val categories = categorizeFromLabels(labels)
+            categories.forEach { category ->
+                detectedItems.add(
+                    DetectedClothingItem(
+                        category = category,
+                        labels = labels.filter { label ->
+                            isRelevantLabel(label, category)
+                        },
+                        colors = colors,
+                        boundingBox = null,
+                        confidence = 0.5f
+                    )
                 )
-            )
+            }
         }
 
         Log.d(TAG, "Detected ${detectedItems.size} clothing items")
         return detectedItems
     }
 
-    private fun mapLabelsToCategories(labels: Set<String>): Set<ClothingCategory> {
-        val categories = mutableSetOf<ClothingCategory>()
+    private fun extractColors(response: JSONObject): List<String> {
+        val colors = mutableListOf<String>()
 
-        // Define keywords for each category
-        val shirtKeywords = setOf("shirt", "top", "t-shirt", "tshirt", "blouse", "sweater", "hoodie", "sweatshirt", "jersey", "polo")
-        val pantsKeywords = setOf("pants", "trousers", "jeans", "shorts", "skirt", "leggings", "bottom")
-        val shoesKeywords = setOf("shoe", "shoes", "footwear", "sneaker", "boot", "sandal", "heel")
+        val imageProperties = response.optJSONObject("imagePropertiesAnnotation")
+        val dominantColors = imageProperties?.optJSONObject("dominantColors")
+        val colorArray = dominantColors?.optJSONArray("colors")
+
+        colorArray?.let {
+            for (i in 0 until minOf(it.length(), 5)) { // Take top 5 colors
+                val colorObj = it.getJSONObject(i)
+                val color = colorObj.getJSONObject("color")
+                val r = color.optInt("red", 0)
+                val g = color.optInt("green", 0)
+                val b = color.optInt("blue", 0)
+
+                // Convert to hex
+                val hexColor = String.format("#%02X%02X%02X", r, g, b)
+                colors.add(hexColor)
+            }
+        }
+
+        return colors
+    }
+
+    private fun extractLabels(response: JSONObject): List<String> {
+        val labels = mutableListOf<String>()
+
+        val labelAnnotations = response.optJSONArray("labelAnnotations")
+        labelAnnotations?.let {
+            for (i in 0 until it.length()) {
+                val label = it.getJSONObject(i).getString("description").lowercase()
+                labels.add(label)
+            }
+        }
+
+        return labels
+    }
+
+    private fun extractBoundingBox(obj: JSONObject): BoundingBox? {
+        return try {
+            val boundingPoly = obj.getJSONObject("boundingPoly")
+            val normalizedVertices = boundingPoly.getJSONArray("normalizedVertices")
+
+            if (normalizedVertices.length() < 4) return null
+
+            // Get all vertices to find min/max
+            val xCoords = mutableListOf<Float>()
+            val yCoords = mutableListOf<Float>()
+
+            for (i in 0 until normalizedVertices.length()) {
+                val vertex = normalizedVertices.getJSONObject(i)
+                xCoords.add(vertex.optDouble("x", 0.0).toFloat())
+                yCoords.add(vertex.optDouble("y", 0.0).toFloat())
+            }
+
+            BoundingBox(
+                left = xCoords.minOrNull() ?: 0f,
+                top = yCoords.minOrNull() ?: 0f,
+                right = xCoords.maxOrNull() ?: 1f,
+                bottom = yCoords.maxOrNull() ?: 1f
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error extracting bounding box", e)
+            null
+        }
+    }
+
+    private fun findRelatedLabels(objectName: String, allLabels: List<String>): List<String> {
+        val related = mutableListOf<String>()
+        val keywords = objectName.split(" ")
+
+        for (label in allLabels) {
+            for (keyword in keywords) {
+                if (label.contains(keyword, ignoreCase = true)) {
+                    related.add(label)
+                    break
+                }
+            }
+        }
+
+        return related.ifEmpty { allLabels.take(5) } // Fallback to first 5 labels
+    }
+
+    private fun categorizeName(name: String): ClothingCategory? {
+        val shirtKeywords = setOf("shirt", "top", "t-shirt", "tshirt", "blouse", "sweater",
+            "hoodie", "sweatshirt", "jersey", "polo")
+        val pantsKeywords = setOf("pants", "trousers", "jeans", "shorts", "skirt",
+            "leggings", "bottom")
+        val shoesKeywords = setOf("shoe", "shoes", "footwear", "sneaker", "boot",
+            "sandal", "heel")
         val dressKeywords = setOf("dress", "gown", "frock")
         val jacketKeywords = setOf("jacket", "coat", "blazer", "cardigan", "outerwear")
-        val accessoryKeywords = setOf("hat", "cap", "bag", "purse", "belt", "scarf", "glasses", "sunglasses", "watch", "jewelry")
+        val accessoryKeywords = setOf("hat", "cap", "bag", "purse", "belt", "scarf",
+            "glasses", "sunglasses", "watch", "jewelry")
+
+        return when {
+            shirtKeywords.any { name.contains(it) } -> ClothingCategory.SHIRT
+            pantsKeywords.any { name.contains(it) } -> ClothingCategory.PANTS
+            shoesKeywords.any { name.contains(it) } -> ClothingCategory.SHOES
+            dressKeywords.any { name.contains(it) } -> ClothingCategory.DRESS
+            jacketKeywords.any { name.contains(it) } -> ClothingCategory.JACKET
+            accessoryKeywords.any { name.contains(it) } -> ClothingCategory.ACCESSORY
+            else -> null // Not a clothing item
+        }
+    }
+
+    private fun categorizeFromLabels(labels: List<String>): Set<ClothingCategory> {
+        val categories = mutableSetOf<ClothingCategory>()
+
+        val shirtKeywords = setOf("shirt", "top", "t-shirt", "tshirt", "blouse", "sweater",
+            "hoodie", "sweatshirt", "jersey", "polo")
+        val pantsKeywords = setOf("pants", "trousers", "jeans", "shorts", "skirt",
+            "leggings", "bottom")
+        val shoesKeywords = setOf("shoe", "shoes", "footwear", "sneaker", "boot",
+            "sandal", "heel")
+        val dressKeywords = setOf("dress", "gown", "frock")
+        val jacketKeywords = setOf("jacket", "coat", "blazer", "cardigan", "outerwear")
+        val accessoryKeywords = setOf("hat", "cap", "bag", "purse", "belt", "scarf",
+            "glasses", "sunglasses", "watch", "jewelry")
 
         for (label in labels) {
             when {
@@ -147,11 +285,24 @@ class VisionApiService(private val apiKey: String) {
             }
         }
 
-        // If no specific categories found, add OTHER
         if (categories.isEmpty()) {
             categories.add(ClothingCategory.OTHER)
         }
 
         return categories
+    }
+
+    private fun isRelevantLabel(label: String, category: ClothingCategory): Boolean {
+        val categoryKeywords = when (category) {
+            ClothingCategory.SHIRT -> setOf("shirt", "top", "sleeve", "collar", "cotton", "fabric")
+            ClothingCategory.PANTS -> setOf("pants", "trousers", "jeans", "denim", "leg", "waist")
+            ClothingCategory.SHOES -> setOf("shoe", "footwear", "sole", "lace", "leather")
+            ClothingCategory.DRESS -> setOf("dress", "gown", "formal", "elegant")
+            ClothingCategory.JACKET -> setOf("jacket", "coat", "outer", "sleeve", "zipper")
+            ClothingCategory.ACCESSORY -> setOf("accessory", "fashion", "style")
+            ClothingCategory.OTHER -> setOf("clothing", "apparel", "wear")
+        }
+
+        return categoryKeywords.any { label.contains(it, ignoreCase = true) }
     }
 }

@@ -10,6 +10,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,9 +22,11 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.cs407.memoria.model.Outfit
+import com.cs407.memoria.ui.DuplicateConfirmationDialog
 import com.cs407.memoria.ui.OutfitDetailScreen
 import com.cs407.memoria.ui.SignInScreen
 import com.cs407.memoria.ui.WardrobeScreen
+import com.cs407.memoria.utils.TestImageHelper
 import com.cs407.memoria.viewmodel.AuthViewModel
 import com.cs407.memoria.viewmodel.OutfitViewModel
 import java.io.File
@@ -59,6 +63,32 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     } else {
+                        // Show duplicate confirmation dialog if needed
+                        val similarItems by outfitViewModel.similarItemsForConfirmation.collectAsState()
+                        similarItems?.let { (detectedItem, similar) ->
+                            // Create temporary ClothingItem for display
+                            val tempItem = com.cs407.memoria.model.ClothingItem(
+                                category = detectedItem.category,
+                                description = "New ${detectedItem.category.name.lowercase()}",
+                                dominantColors = detectedItem.colors,
+                                detectedLabels = detectedItem.labels
+                            )
+
+                            DuplicateConfirmationDialog(
+                                newItem = tempItem,
+                                similarItems = similar,
+                                onConfirmExisting = { existingItem ->
+                                    outfitViewModel.onUserConfirmsExistingItem(existingItem)
+                                },
+                                onCreateNew = {
+                                    outfitViewModel.onUserCreatesNewItem()
+                                },
+                                onDismiss = {
+                                    outfitViewModel.onDismissDuplicateDialog()
+                                }
+                            )
+                        }
+
                         when (currentScreen) {
                             "home" -> HomeScreen(
                                 authViewModel = authViewModel,
@@ -70,7 +100,10 @@ class MainActivity : ComponentActivity() {
                                 val isLoading by outfitViewModel.isLoading.collectAsState()
 
                                 LaunchedEffect(Unit) {
-                                    currentUser?.uid?.let { outfitViewModel.loadOutfits(it) }
+                                    currentUser?.uid?.let {
+                                        outfitViewModel.loadOutfits(it)
+                                        outfitViewModel.loadClothingItems(it)
+                                    }
                                 }
 
                                 WardrobeScreen(
@@ -85,8 +118,10 @@ class MainActivity : ComponentActivity() {
                             }
                             "detail" -> {
                                 selectedOutfit?.let { outfit ->
+                                    val clothingItems = outfitViewModel.getClothingItemsForOutfit(outfit)
                                     OutfitDetailScreen(
                                         outfit = outfit,
+                                        clothingItems = clothingItems,
                                         onBackClick = { currentScreen = "wardrobe" }
                                     )
                                 }
@@ -146,6 +181,22 @@ class MainActivity : ComponentActivity() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            // Sign out button at the top right
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
+                IconButton(onClick = { authViewModel.signOut() }) {
+                    Icon(
+                        imageVector = Icons.Default.ExitToApp,
+                        contentDescription = "Sign Out",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
             Text(
                 text = "Memoria",
                 style = MaterialTheme.typography.headlineLarge,
@@ -166,6 +217,36 @@ class MainActivity : ComponentActivity() {
             }
 
             if (hasCameraPermission) {
+                // TEST BUTTON - Uses drawable image instead of camera
+                Button(
+                    onClick = {
+                        currentUser?.uid?.let { userId ->
+                            // Replace R.drawable.guy with your actual drawable name
+                            val testImageUri = TestImageHelper.getUriFromDrawable(
+                                context,
+                                R.drawable.guy  // Change this to your drawable name
+                            )
+                            testImageUri?.let { uri ->
+                                Log.d(TAG, "Testing with drawable image: $uri")
+                                outfitViewModel.uploadOutfit(context, uri, userId)
+                            } ?: run {
+                                Log.e(TAG, "Failed to create test image URI")
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    enabled = !isLoading,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondary
+                    )
+                ) {
+                    Text("TEST: Use Drawable Image")
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
                 Button(
                     onClick = {
                         val uri = createImageUri()
@@ -216,7 +297,6 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
 
     //save photo in local app storage as timestamp
     private fun createImageUri(): Uri {

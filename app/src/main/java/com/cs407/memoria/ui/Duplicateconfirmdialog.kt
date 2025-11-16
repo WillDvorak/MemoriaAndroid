@@ -7,6 +7,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -16,86 +18,66 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import com.cs407.memoria.model.ClothingItem
-import com.cs407.memoria.model.Outfit
 
 @Composable
-fun OutfitDetailScreen(
-    outfit: Outfit,
-    clothingItems: List<ClothingItem>,
-    onBackClick: () -> Unit
+fun DuplicateConfirmationDialog(
+    newItem: ClothingItem,
+    similarItems: List<Pair<ClothingItem, Float>>,
+    onConfirmExisting: (ClothingItem) -> Unit,
+    onCreateNew: () -> Unit,
+    onDismiss: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        Text(
-            text = "Outfit Details",
-            style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
-
-        Button(
-            onClick = onBackClick,
-            modifier = Modifier.padding(bottom = 16.dp)
-        ) {
-            Text("Back to Wardrobe")
-        }
-
-        // Outfit Image
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(400.dp)
-        ) {
-            // Decode base64 to bitmap
-            val imageBytes = Base64.decode(outfit.imageUrl, Base64.DEFAULT)
-            val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
-
-            if (bitmap != null) {
-                Image(
-                    bitmap = bitmap.asImageBitmap(),
-                    contentDescription = "Outfit photo",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("Image unavailable")
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Clothing Items in this Outfit
-        Text(
-            text = "Items in this Outfit:",
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
-
-        if (clothingItems.isEmpty()) {
-            Text("No items detected")
-        } else {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("Duplicate Item Detected")
+        },
+        text = {
             LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(400.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(clothingItems) { item ->
-                    ClothingItemCard(item = item)
+                item {
+                    Text(
+                        "We found similar items in your wardrobe. Is this the same as one of these?",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                items(similarItems) { (item, similarity) ->
+                    SimilarItemCard(
+                        item = item,
+                        similarity = similarity,
+                        onClick = { onConfirmExisting(item) }
+                    )
                 }
             }
+        },
+        confirmButton = {
+            TextButton(onClick = onCreateNew) {
+                Text("No, this is new")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
         }
-    }
+    )
 }
 
 @Composable
-private fun ClothingItemCard(item: ClothingItem) {
+private fun SimilarItemCard(
+    item: ClothingItem,
+    similarity: Float,
+    onClick: () -> Unit
+) {
     Card(
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick
     ) {
         Row(
             modifier = Modifier
@@ -104,7 +86,7 @@ private fun ClothingItemCard(item: ClothingItem) {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Item thumbnail
+            // Item image
             if (item.imageUrl.isNotEmpty()) {
                 Card(
                     modifier = Modifier.size(80.dp)
@@ -130,13 +112,13 @@ private fun ClothingItemCard(item: ClothingItem) {
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("?")
+                            Text("?", style = MaterialTheme.typography.headlineMedium)
                         }
                     }
                 }
             }
 
-            // Item details
+            // Item info
             Column(
                 modifier = Modifier.weight(1f)
             ) {
@@ -145,18 +127,22 @@ private fun ClothingItemCard(item: ClothingItem) {
                     style = MaterialTheme.typography.bodyLarge
                 )
                 Text(
-                    text = item.category.name.replace("_", " "),
+                    text = "${(similarity * 100).toInt()}% match",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "Used in ${item.outfitReferences.size} outfit${if (item.outfitReferences.size != 1) "s" else ""}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                if (item.outfitReferences.size > 1) {
-                    Text(
-                        text = "Used in ${item.outfitReferences.size} outfits",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
             }
+
+            Icon(
+                imageVector = androidx.compose.material.icons.Icons.Default.Check,
+                contentDescription = "Select",
+                tint = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }
