@@ -302,4 +302,37 @@ class OutfitViewModel(private val apiKey: String) : ViewModel() {
             outfit.clothingItemIds.contains(item.id)
         }
     }
+
+    fun deleteOutfit(outfit: Outfit, userId: String) {
+        viewModelScope.launch {
+            try {
+                _isLoading.value = true
+                _error.value = null
+
+                // Remove outfit reference from clothing items that use it
+                val itemsToUpdate = _clothingItems.value.filter { item ->
+                    outfit.id.isNotEmpty() && item.outfitReferences.contains(outfit.id)
+                }
+
+                for (item in itemsToUpdate) {
+                    val updatedRefs = item.outfitReferences.filter { it != outfit.id }
+                    val updatedItem = item.copy(outfitReferences = updatedRefs)
+                    itemRepository.updateClothingItem(updatedItem)
+                }
+
+                // Delete the outfit itself
+                outfitRepository.deleteOutfit(outfit.id)
+
+                // Refresh lists for this user
+                loadOutfits(userId)
+                loadClothingItems(userId)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error deleting outfit", e)
+                _error.value = "Error deleting outfit: ${e.message}"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
 }

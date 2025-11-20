@@ -47,6 +47,14 @@ class OutfitRepository {
         return outfitId
     }
 
+    //delete outfit from database
+    suspend fun deleteOutfit(outfitId: String) {
+        val outfitRef = database.getReference("outfits/$outfitId")
+        outfitRef.removeValue().await()
+        Log.d(TAG, "Outfit deleted: $outfitId")
+    }
+
+
     suspend fun getOutfitsForUser(userId: String): List<Outfit> = suspendCancellableCoroutine { continuation ->
         val outfitsRef = database.getReference("outfits")
         val query = outfitsRef.orderByChild("userId").equalTo(userId)
