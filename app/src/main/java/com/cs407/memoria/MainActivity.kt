@@ -139,6 +139,8 @@ class MainActivity : ComponentActivity() {
         outfitViewModel: OutfitViewModel,
         onNavigateToWardrobe: () -> Unit
     ) {
+        val topics = listOf("Pets", "Gym", "School", "Outfits")
+        var selectedTopic by remember { mutableStateOf(topics.first()) }
         val context = LocalContext.current
         val currentUser by authViewModel.currentUser.collectAsState()
         val isLoading by outfitViewModel.isLoading.collectAsState()
@@ -169,7 +171,7 @@ class MainActivity : ComponentActivity() {
             if (success && capturedImageUri != null) {
                 // Photo was captured successfully, now upload it
                 currentUser?.uid?.let { userId ->
-                    outfitViewModel.uploadOutfit(context, capturedImageUri!!, userId)
+                    outfitViewModel.uploadOutfit(context, capturedImageUri!!, userId, topicName = selectedTopic, note = "")
                 }
             }
         }
@@ -203,6 +205,28 @@ class MainActivity : ComponentActivity() {
                 modifier = Modifier.padding(bottom = 32.dp)
             )
 
+            Text(
+                text = "Current topic: $selectedTopic",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                topics.forEach { topic ->
+                    OutlinedButton(
+                        onClick = { selectedTopic = topic },
+                        enabled = !isLoading
+                    ) {
+                        Text(topic)
+                    }
+                }
+            }
+
             if (isLoading) {
                 CircularProgressIndicator(modifier = Modifier.padding(bottom = 16.dp))
                 Text("Processing outfit...", modifier = Modifier.padding(bottom = 16.dp))
@@ -228,7 +252,7 @@ class MainActivity : ComponentActivity() {
                             )
                             testImageUri?.let { uri ->
                                 Log.d(TAG, "Testing with drawable image: $uri")
-                                outfitViewModel.uploadOutfit(context, uri, userId)
+                                outfitViewModel.uploadOutfit(context, uri, userId=userId,topicName = selectedTopic, note = "")
                             } ?: run {
                                 Log.e(TAG, "Failed to create test image URI")
                             }

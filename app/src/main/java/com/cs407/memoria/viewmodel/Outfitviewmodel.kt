@@ -42,12 +42,14 @@ class OutfitViewModel(private val apiKey: String) : ViewModel() {
     private var currentOutfitImageBase64: String? = null
     private var currentUserId: String? = null
     private var processedItemIds = mutableListOf<String>()
+    private var currentTopicName: String? = null
+    private var currentNote: String? = null
 
     companion object {
         private const val TAG = "OutfitViewModel"
     }
 
-    fun uploadOutfit(context: Context, imageUri: Uri, userId: String) {
+    fun uploadOutfit(context: Context, imageUri: Uri, userId: String, topicName: String, note: String) {
         viewModelScope.launch {
             try {
                 _isLoading.value = true
@@ -63,6 +65,8 @@ class OutfitViewModel(private val apiKey: String) : ViewModel() {
                 // Store for later use
                 currentOutfitImageBase64 = base64Image
                 currentUserId = userId
+                currentTopicName = topicName
+                currentNote = note
 
                 // 2. Detect clothing items using Vision API
                 Log.d(TAG, "Detecting clothing items...")
@@ -98,7 +102,10 @@ class OutfitViewModel(private val apiKey: String) : ViewModel() {
             val outfit = Outfit(
                 imageUrl = currentOutfitImageBase64!!,
                 clothingItemIds = processedItemIds.toList(),
-                userId = currentUserId!!
+                userId = currentUserId!!,
+                        topicName = currentTopicName ?: "",
+                note = currentNote ?: ""
+
             )
 
             val outfitId = outfitRepository.saveOutfit(outfit)
@@ -116,6 +123,8 @@ class OutfitViewModel(private val apiKey: String) : ViewModel() {
             // Clear state
             currentOutfitImageBase64 = null
             currentUserId = null
+            currentTopicName = null
+            currentNote = null
             processedItemIds.clear()
             _pendingItems.value = emptyList()
 
