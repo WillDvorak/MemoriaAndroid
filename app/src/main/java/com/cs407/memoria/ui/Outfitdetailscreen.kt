@@ -22,7 +22,8 @@ import com.cs407.memoria.model.Outfit
 fun OutfitDetailScreen(
     outfit: Outfit,
     clothingItems: List<ClothingItem>,
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    onDeleteClick: () -> Unit   // 👈 NEW
 ) {
     Column(
         modifier = Modifier
@@ -35,20 +36,36 @@ fun OutfitDetailScreen(
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        Button(
-            onClick = onBackClick,
-            modifier = Modifier.padding(bottom = 16.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Back to Wardrobe")
+            Button(
+                onClick = onBackClick
+            ) {
+                Text("Back to Wardrobe")
+            }
+
+            Button(
+                onClick = onDeleteClick,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError
+                )
+            ) {
+                Text("Delete Outfit")
+            }
         }
 
-        // Outfit Image
+        // Outfit Image (existing code)
         Card(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(400.dp)
         ) {
-            // Decode base64 to bitmap
             val imageBytes = Base64.decode(outfit.imageUrl, Base64.DEFAULT)
             val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
 
@@ -71,7 +88,6 @@ fun OutfitDetailScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Clothing Items in this Outfit
         Text(
             text = "Items in this Outfit:",
             style = MaterialTheme.typography.titleLarge,
@@ -91,6 +107,7 @@ fun OutfitDetailScreen(
         }
     }
 }
+
 
 @Composable
 private fun ClothingItemCard(item: ClothingItem) {

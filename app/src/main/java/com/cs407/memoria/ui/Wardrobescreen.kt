@@ -1,46 +1,65 @@
 package com.cs407.memoria.ui
 
-import android.graphics.BitmapFactory
-import android.util.Base64
+import android.net.Uri
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Card
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.dp
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.unit.dp
-import com.cs407.memoria.model.Outfit
+import androidx.compose.ui.platform.LocalContext
 
 @Composable
 fun WardrobeScreen(
     outfits: List<Outfit>,
     isLoading: Boolean,
     onOutfitClick: (Outfit) -> Unit,
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    onAddFromGallery: () -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
     ) {
+
+        // Top row: Add-from-library on the left, Back on the right
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedButton(onClick = onBackClick) {
+                Text("Back")
+            }
+            Button(onClick = onAddFromGallery) {
+                Text("Add from Library")
+            }
+
+        }
+
         Text(
             text = "My Wardrobe",
             style = MaterialTheme.typography.headlineMedium,
             modifier = Modifier.padding(bottom = 16.dp)
         )
-
-        Button(
-            onClick = onBackClick,
-            modifier = Modifier.padding(bottom = 16.dp)
-        ) {
-            Text("Back")
-        }
 
         when {
             isLoading -> {
@@ -56,7 +75,7 @@ fun WardrobeScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("No outfits yet. Take a photo to get started!")
+                    Text("No outfits yet. Add one from the library or take a photo!")
                 }
             }
             else -> {
@@ -75,37 +94,47 @@ fun WardrobeScreen(
             }
         }
     }
-}
 
 @Composable
-fun OutfitCard(
-    outfit: Outfit,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(0.75f)
-            .clickable(onClick = onClick)
-    ) {
-        // Decode base64 to bitmap
-        val imageBytes = Base64.decode(outfit.imageUrl, Base64.DEFAULT)
-        val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+fun OutfitCard(imageUri: Uri) {
+    val context = LocalContext.current
 
-        if (bitmap != null) {
+    // Decode the bitmap from the Uri (simple version)
+    val bitmap = remember(imageUri) {
+        context.contentResolver.openInputStream(imageUri)?.use { input ->
+            BitmapFactory.decodeStream(input)
+        }
+    }
+
+    if (bitmap != null) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(9f / 16f)
+                .border(BorderStroke(4.dp, Color.Black), )
+        ) {
             Image(
                 bitmap = bitmap.asImageBitmap(),
                 contentDescription = "Outfit photo",
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().padding(10.dp),
                 contentScale = ContentScale.Crop
+
             )
-        } else {
+        }
+    } else {
+        // Optional: fallback UI if bitmap can't be decoded
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(260.dp),
+        ) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                Text("Image unavailable")
+                Text("Could not load image")
             }
         }
     }
 }
+
