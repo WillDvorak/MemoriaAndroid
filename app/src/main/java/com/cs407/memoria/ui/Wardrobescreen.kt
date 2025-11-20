@@ -22,25 +22,37 @@ fun WardrobeScreen(
     outfits: List<Outfit>,
     isLoading: Boolean,
     onOutfitClick: (Outfit) -> Unit,
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    onAddFromGallery: () -> Unit    // 👈 NEW
 ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
     ) {
+
+        // Top row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedButton(onClick = onBackClick) {
+                Text("Back")
+            }
+            Button(onClick = onAddFromGallery) {
+                Text("Add from Library")
+            }
+
+        }
+
         Text(
             text = "My Wardrobe",
             style = MaterialTheme.typography.headlineMedium,
             modifier = Modifier.padding(bottom = 16.dp)
         )
-
-        Button(
-            onClick = onBackClick,
-            modifier = Modifier.padding(bottom = 16.dp)
-        ) {
-            Text("Back")
-        }
 
         when {
             isLoading -> {
@@ -56,7 +68,7 @@ fun WardrobeScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("No outfits yet. Take a photo to get started!")
+                    Text("No outfits yet. Add one from the library or take a photo!")
                 }
             }
             else -> {
@@ -76,6 +88,7 @@ fun WardrobeScreen(
         }
     }
 }
+
 
 @Composable
 fun OutfitCard(
