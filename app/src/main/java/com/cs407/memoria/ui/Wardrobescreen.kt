@@ -31,7 +31,7 @@ fun WardrobeScreen(
             .padding(16.dp)
     ) {
 
-        // Top row: Add-from-library on the left, Back on the right
+        // Top row
         Row(
             modifier = Modifier
                 .fillMaxWidth()
