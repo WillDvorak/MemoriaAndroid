@@ -33,7 +33,6 @@ import java.io.File
 
 private const val TAG = "MainActivity"
 
-// TODO: Replace with your actual Google Cloud Vision API key
 private const val VISION_API_KEY = "AIzaSyD3Nc3lyPs3YvquiavFs5j67-WD4n-ySro"
 
 class MainActivity : ComponentActivity() {
@@ -80,8 +79,8 @@ class MainActivity : ComponentActivity() {
                                 onConfirmExisting = { existingItem ->
                                     outfitViewModel.onUserConfirmsExistingItem(existingItem)
                                 },
-                                onCreateNew = {
-                                    outfitViewModel.onUserCreatesNewItem()
+                                onCreateNew = { customName ->
+                                    outfitViewModel.onUserCreatesNewItem(customName)
                                 },
                                 onDismiss = {
                                     outfitViewModel.onDismissDuplicateDialog()
@@ -122,7 +121,10 @@ class MainActivity : ComponentActivity() {
                                     OutfitDetailScreen(
                                         outfit = outfit,
                                         clothingItems = clothingItems,
-                                        onBackClick = { currentScreen = "wardrobe" }
+                                        onBackClick = { currentScreen = "wardrobe" },
+                                        onRenameItem = { itemId, newName ->
+                                            outfitViewModel.renameClothingItem(itemId, newName)
+                                        }
                                     )
                                 }
                             }

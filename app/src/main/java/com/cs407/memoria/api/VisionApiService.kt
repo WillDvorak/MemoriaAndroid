@@ -14,14 +14,18 @@ import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlin.math.abs
 
 class VisionApiService(private val apiKey: String) {
 
     companion object {
         private const val TAG = "VisionApiService"
         private const val VISION_API_URL = "https://vision.googleapis.com/v1/images:annotate"
+        private const val OVERLAP_THRESHOLD = 0.5f // 50% overlap is considered duplicate
     }
 
+
+    //main function
     suspend fun detectClothing(imageBase64: String, userId: String): List<DetectedClothingItem> =
         withContext(Dispatchers.IO) {
             try {
@@ -34,6 +38,13 @@ class VisionApiService(private val apiKey: String) {
             }
         }
 
+
+    /*
+    sends content (image) and requests
+    label (what the item is)
+    object with label, confidence and location of item
+    properties ( color)
+     */
     private fun buildRequestBody(imageBase64: String): String {
         val jsonRequest = JSONObject().apply {
             put("requests", JSONArray().apply {
@@ -83,6 +94,8 @@ class VisionApiService(private val apiKey: String) {
         }
     }
 
+
+
     private fun parseDetectedItems(response: String, userId: String): List<DetectedClothingItem> {
         val detectedItems = mutableListOf<DetectedClothingItem>()
         val jsonResponse = JSONObject(response)
@@ -119,20 +132,25 @@ class VisionApiService(private val apiKey: String) {
                     // Find related labels for this object
                     val relatedLabels = findRelatedLabels(name, labels)
 
-                    detectedItems.add(
-                        DetectedClothingItem(
-                            category = category,
-                            labels = relatedLabels,
-                            colors = colors,
-                            boundingBox = boundingBox,
-                            confidence = confidence
-                        )
+                    val newItem = DetectedClothingItem(
+                        category = category,
+                        labels = relatedLabels,
+                        colors = colors,
+                        boundingBox = boundingBox,
+                        confidence = confidence
                     )
+
+                    // Check if this is a duplicate (overlapping bounding box with same category)
+                    if (!isDuplicateDetection(newItem, detectedItems)) {
+                        detectedItems.add(newItem)
+                    } else {
+                        Log.d(TAG, "Skipping duplicate detection: $name")
+                    }
                 }
             }
         }
 
-        // If no objects were detected, try categorizing from labels alone
+        // If no objects were detected try categorizing from labels alone
         if (detectedItems.isEmpty() && labels.isNotEmpty()) {
             val categories = categorizeFromLabels(labels)
             categories.forEach { category ->
@@ -150,8 +168,66 @@ class VisionApiService(private val apiKey: String) {
             }
         }
 
-        Log.d(TAG, "Detected ${detectedItems.size} clothing items")
+        Log.d(TAG, "Detected ${detectedItems.size} unique clothing items")
         return detectedItems
+    }
+
+
+
+    /* Checks for Duplicates in the same photo so API doesn't return same item twice */
+    private fun isDuplicateDetection(
+        newItem: DetectedClothingItem,
+        existingItems: List<DetectedClothingItem>
+    ): Boolean {
+        // If no bounding box, can't determine overlap
+        if (newItem.boundingBox == null) return false
+
+        for (existing in existingItems) {
+            // Only check items of the same category
+            if (existing.category != newItem.category) continue
+
+            // If existing item has no bounding box, skip
+            if (existing.boundingBox == null) continue
+
+            // Calculate overlap
+            val overlap = calculateOverlap(newItem.boundingBox, existing.boundingBox)
+            if (overlap > OVERLAP_THRESHOLD) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    /**
+     * Calculate the overlap ratio between two bounding boxes on image
+     */
+    private fun calculateOverlap(box1: BoundingBox, box2: BoundingBox): Float {
+        // Calculate intersection
+        val intersectLeft = maxOf(box1.left, box2.left)
+        val intersectTop = maxOf(box1.top, box2.top)
+        val intersectRight = minOf(box1.right, box2.right)
+        val intersectBottom = minOf(box1.bottom, box2.bottom)
+
+        // Check if there's an intersection
+        if (intersectLeft >= intersectRight || intersectTop >= intersectBottom) {
+            return 0f
+        }
+
+        val intersectionArea = (intersectRight - intersectLeft) * (intersectBottom - intersectTop)
+
+        // Calculate areas of both boxes
+        val box1Area = (box1.right - box1.left) * (box1.bottom - box1.top)
+        val box2Area = (box2.right - box2.left) * (box2.bottom - box2.top)
+
+        // Use the smaller area to calculate overlap ratio
+        val smallerArea = minOf(box1Area, box2Area)
+
+        return if (smallerArea > 0) {
+            intersectionArea / smallerArea
+        } else {
+            0f
+        }
     }
 
     private fun extractColors(response: JSONObject): List<String> {
@@ -260,6 +336,7 @@ class VisionApiService(private val apiKey: String) {
         }
     }
 
+    // Helper to map api responses to specific categories
     private fun categorizeFromLabels(labels: List<String>): Set<ClothingCategory> {
         val categories = mutableSetOf<ClothingCategory>()
 

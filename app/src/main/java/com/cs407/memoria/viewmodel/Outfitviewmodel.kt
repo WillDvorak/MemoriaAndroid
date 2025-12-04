@@ -42,6 +42,7 @@ class OutfitViewModel(private val apiKey: String) : ViewModel() {
     private var currentOutfitImageBase64: String? = null
     private var currentUserId: String? = null
     private var processedItemIds = mutableListOf<String>()
+    private var customItemName: String? = null
 
     companion object {
         private const val TAG = "OutfitViewModel"
@@ -118,6 +119,7 @@ class OutfitViewModel(private val apiKey: String) : ViewModel() {
             currentUserId = null
             processedItemIds.clear()
             _pendingItems.value = emptyList()
+            customItemName = null
 
         } catch (e: Exception) {
             Log.e(TAG, "Error finalizing outfit", e)
@@ -147,12 +149,12 @@ class OutfitViewModel(private val apiKey: String) : ViewModel() {
 
             if (similarItems.isNotEmpty()) {
                 Log.d(TAG, "Found ${similarItems.size} similar items")
-                // Show confirmation dialog
+                // Show confirmation dialog with existing items (which have their custom names)
                 _similarItemsForConfirmation.value = Pair(nextItem, similarItems)
             } else {
                 Log.d(TAG, "No similar items found, creating new")
                 // No duplicates, create new item
-                createNewItem(nextItem)
+                createNewItem(nextItem, null)
             }
         }
     }
@@ -176,14 +178,15 @@ class OutfitViewModel(private val apiKey: String) : ViewModel() {
         }
     }
 
-    fun onUserCreatesNewItem() {
+    fun onUserCreatesNewItem(customName: String) {
         viewModelScope.launch {
             try {
                 val pending = _pendingItems.value
                 if (pending.isNotEmpty()) {
                     val item = pending.first()
-                    Log.d(TAG, "User chose to create new item")
-                    createNewItem(item)
+
+                    Log.d(TAG, "User chose to create new item with name: $customName")
+                    createNewItem(item, customName)
                 }
                 _similarItemsForConfirmation.value = null
             } catch (e: Exception) {
@@ -202,7 +205,7 @@ class OutfitViewModel(private val apiKey: String) : ViewModel() {
         }
     }
 
-    private suspend fun createNewItem(detectedItem: DetectedClothingItem) {
+    private suspend fun createNewItem(detectedItem: DetectedClothingItem, customName: String?) {
         try {
             // Crop image for this item
             val croppedImage = itemRepository.cropItemImage(
@@ -210,12 +213,16 @@ class OutfitViewModel(private val apiKey: String) : ViewModel() {
                 detectedItem.boundingBox
             )
 
-            // Generate description
-            val description = itemRepository.generateDescription(
-                detectedItem.category,
-                detectedItem.colors,
-                detectedItem.labels
-            )
+            // Use custom name if provided, otherwise generate description
+            val description = if (!customName.isNullOrBlank()) {
+                customName
+            } else {
+                itemRepository.generateDescription(
+                    detectedItem.category,
+                    detectedItem.colors,
+                    detectedItem.labels
+                )
+            }
 
             // Create new clothing item
             val newItem = ClothingItem(
@@ -242,8 +249,6 @@ class OutfitViewModel(private val apiKey: String) : ViewModel() {
             _isLoading.value = false
         }
     }
-
-
 
     private fun createClothingItemFromDetection(detected: DetectedClothingItem): ClothingItem {
         val description = itemRepository.generateDescription(
@@ -293,4 +298,25 @@ class OutfitViewModel(private val apiKey: String) : ViewModel() {
             outfit.clothingItemIds.contains(item.id)
         }
     }
+
+
+    fun renameClothingItem(itemId: String, newName: String) {
+        viewModelScope.launch {
+            try {
+                // Update in Firebase
+                itemRepository.updateItemDescription(itemId, newName)
+
+                // Update local state so all outfits see the new name
+                _clothingItems.value = _clothingItems.value.map { item ->
+                    if (item.id == itemId) item.copy(description = newName) else item
+                }
+
+                Log.d(TAG, "Item renamed: $itemId -> $newName")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error renaming item", e)
+                _error.value = "Failed to rename item: ${e.message}"
+            }
+        }
+    }
+
 }

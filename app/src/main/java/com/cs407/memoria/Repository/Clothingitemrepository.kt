@@ -27,7 +27,8 @@ class ClothingItemRepository {
     }
 
     /**
-     * Crop an item from the outfit image using bounding box coordinates
+     * Crop an item from the outfit image using bounding box coordinates of ClothingItem
+     * from vision api response
      */
     fun cropItemImage(outfitImageBase64: String, boundingBox: BoundingBox?): String {
         return try {
@@ -89,9 +90,15 @@ class ClothingItemRepository {
             ""
         }
 
-        // Find most descriptive label
+        // Find most descriptive label, avoiding generic terms
         val descriptiveLabel = labels.firstOrNull { label ->
             !label.contains(category.name, ignoreCase = true) &&
+                    !label.contains("sleeve", ignoreCase = true) && // Filter out "sleeve"
+                    !label.contains("clothing", ignoreCase = true) &&
+                    !label.contains("apparel", ignoreCase = true) &&
+                    !label.contains("wear", ignoreCase = true) &&
+                    !label.contains("fashion", ignoreCase = true) &&
+                    !label.contains("style", ignoreCase = true) &&
                     label.length > 3
         } ?: ""
 
@@ -110,7 +117,7 @@ class ClothingItemRepository {
     }
 
     /**
-     * Convert hex color to human-readable name (simplified)
+     * Convert hex color to readable name
      */
     private fun getColorName(hexColor: String): String {
         // Remove # if present
@@ -138,7 +145,7 @@ class ClothingItemRepository {
     }
 
     /**
-     * Find potential duplicate items for a new item
+     * Find potential duplicate in wardrobe items for a new item
      */
     suspend fun findSimilarItems(
         newItem: ClothingItem,
@@ -175,6 +182,7 @@ class ClothingItemRepository {
 
     /**
      * Calculate similarity score between two clothing items (0.0 to 1.0)
+     * based on color, label, and description
      */
     private fun calculateSimilarity(item1: ClothingItem, item2: ClothingItem): Float {
         // Must be same category
@@ -183,22 +191,26 @@ class ClothingItemRepository {
         }
 
         var score = 0f
-        var factors = 0
+        var totalWeight = 0f
 
         // Compare colors (weight: 0.4)
         if (item1.dominantColors.isNotEmpty() && item2.dominantColors.isNotEmpty()) {
             val colorMatch = item1.dominantColors.intersect(item2.dominantColors.toSet()).size
             val totalColors = item1.dominantColors.size.coerceAtLeast(item2.dominantColors.size)
-            score += (colorMatch.toFloat() / totalColors) * 0.4f
-            factors++
+            val colorScore = colorMatch.toFloat() / totalColors
+
+            score += colorScore * 0.4f
+            totalWeight += 0.4f
         }
 
         // Compare labels (weight: 0.4)
         if (item1.detectedLabels.isNotEmpty() && item2.detectedLabels.isNotEmpty()) {
             val labelMatch = item1.detectedLabels.intersect(item2.detectedLabels.toSet()).size
             val totalLabels = item1.detectedLabels.size.coerceAtLeast(item2.detectedLabels.size)
-            score += (labelMatch.toFloat() / totalLabels) * 0.4f
-            factors++
+            val labelScore = labelMatch.toFloat() / totalLabels
+
+            score += labelScore * 0.4f
+            totalWeight += 0.4f
         }
 
         // Compare descriptions (weight: 0.2)
@@ -207,12 +219,15 @@ class ClothingItemRepository {
         if (desc1Words.isNotEmpty() && desc2Words.isNotEmpty()) {
             val descMatch = desc1Words.intersect(desc2Words).size
             val totalWords = desc1Words.size.coerceAtLeast(desc2Words.size)
-            score += (descMatch.toFloat() / totalWords) * 0.2f
-            factors++
+            val descScore = descMatch.toFloat() / totalWords
+
+            score += descScore * 0.2f
+            totalWeight += 0.2f
         }
 
-        return if (factors > 0) score / factors else 0f
+        return if (totalWeight > 0f) score / totalWeight else 0f
     }
+
 
     /**
      * Save a new clothing item to the database
@@ -230,12 +245,21 @@ class ClothingItemRepository {
     }
 
     /**
-     * Update an existing clothing item (e.g., add outfit reference)
+     * Update an existing clothing item (e.g., add outfit reference or rename)
      */
     suspend fun updateClothingItem(item: ClothingItem) {
         val itemRef = database.getReference("clothingItems/${item.id}")
         itemRef.setValue(item).await()
         Log.d(TAG, "Clothing item updated: ${item.id}")
+    }
+
+    /**
+     * Update just the description of a clothing item
+     */
+    suspend fun updateItemDescription(itemId: String, newDescription: String) {
+        val itemRef = database.getReference("clothingItems/$itemId/description")
+        itemRef.setValue(newDescription).await()
+        Log.d(TAG, "Item description updated: $itemId -> $newDescription")
     }
 
     /**

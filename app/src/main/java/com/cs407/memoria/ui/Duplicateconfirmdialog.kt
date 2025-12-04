@@ -9,9 +9,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
@@ -24,41 +24,120 @@ fun DuplicateConfirmationDialog(
     newItem: ClothingItem,
     similarItems: List<Pair<ClothingItem, Float>>,
     onConfirmExisting: (ClothingItem) -> Unit,
-    onCreateNew: () -> Unit,
+    onCreateNew: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text("Duplicate Item Detected")
-        },
-        text = {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(400.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                item {
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var editingDescription by remember { mutableStateOf(newItem.description) }
+
+    if (showRenameDialog) {
+        RenameItemDialog(
+            currentName = editingDescription,
+            onConfirm = { newName ->
+                editingDescription = newName
+                showRenameDialog = false
+            },
+            onDismiss = { showRenameDialog = false }
+        )
+    } else {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = {
+                Text("Duplicate Item Detected")
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Text(
                         "We found similar items in your wardrobe. Is this the same as one of these?",
-                        style = MaterialTheme.typography.bodyMedium
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(bottom = 8.dp)
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
 
-                items(similarItems) { (item, similarity) ->
-                    SimilarItemCard(
-                        item = item,
-                        similarity = similarity,
-                        onClick = { onConfirmExisting(item) }
-                    )
+                    // Show new item name with edit option
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "New item: $editingDescription",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        IconButton(onClick = { showRenameDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Rename",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(300.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(similarItems) { (item, similarity) ->
+                            SimilarItemCard(
+                                item = item,
+                                similarity = similarity,
+                                onClick = { onConfirmExisting(item) }
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    // Pass the edited name to create new item
+                    onCreateNew(editingDescription)
+                }) {
+                    Text("No, this is new")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel")
                 }
             }
+        )
+    }
+}
+
+@Composable
+private fun RenameItemDialog(
+    currentName: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var textFieldValue by remember { mutableStateOf(currentName) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rename Item") },
+        text = {
+            OutlinedTextField(
+                value = textFieldValue,
+                onValueChange = { textFieldValue = it },
+                label = { Text("Item Name") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
         },
         confirmButton = {
-            TextButton(onClick = onCreateNew) {
-                Text("No, this is new")
+            TextButton(
+                onClick = { onConfirm(textFieldValue.trim()) },
+                enabled = textFieldValue.trim().isNotEmpty()
+            ) {
+                Text("Save")
             }
         },
         dismissButton = {
@@ -139,7 +218,7 @@ private fun SimilarItemCard(
             }
 
             Icon(
-                imageVector = androidx.compose.material.icons.Icons.Default.Check,
+                imageVector = Icons.Default.Check,
                 contentDescription = "Select",
                 tint = MaterialTheme.colorScheme.primary
             )

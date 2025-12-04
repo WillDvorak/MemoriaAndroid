@@ -4,7 +4,7 @@ data class ClothingItem(
     val id: String = "",
     val imageUrl: String = "", // Cropped image of just this item (base64)
     val category: ClothingCategory = ClothingCategory.OTHER,
-    val description: String = "", // Auto-generated description (e.g., "Blue denim jeans")
+    val description: String = "", // Auto-generated description
     val dominantColors: List<String> = emptyList(), // Hex color codes
     val detectedLabels: List<String> = emptyList(), // Raw labels from Vision API
     val timestamp: Long = System.currentTimeMillis(),
