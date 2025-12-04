@@ -1,103 +1,125 @@
 package com.cs407.memoria.ui
 
-import android.net.Uri
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Card
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.unit.dp
 import android.graphics.BitmapFactory
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.border
+import android.util.Base64
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.runtime.remember
-import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.dp
+import com.cs407.memoria.model.Outfit
 
 @Composable
 fun WardrobeScreen(
-    outfitImages: List<Uri>  // This will be your list from HomeScreen
+    outfits: List<Outfit>,
+    isLoading: Boolean,
+    onOutfitClick: (Outfit) -> Unit,
+    onBackClick: () -> Unit,
+    onAddFromGallery: () -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
     ) {
+
+        // Top row: Back on left, add to wardrobe on right
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Button(onClick = onAddFromGallery) {
+                Text("Add from Library")
+            }
+            OutlinedButton(onClick = onBackClick) {
+                Text("Back")
+            }
+        }
+
         Text(
             text = "My Wardrobe",
-            style = MaterialTheme.typography.headlineMedium
+            style = MaterialTheme.typography.headlineMedium,
+            modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        when {
+            isLoading -> {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            }
 
-        if (outfitImages.isEmpty()) {
-            Text("No outfits yet. Go take a photo on the Home screen!")
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(bottom = 16.dp)
-            ) {
-                items(outfitImages) { imageUri ->
-                    OutfitCard(imageUri = imageUri)
+            outfits.isEmpty() -> {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("No outfits yet. Add one from the library or take a photo!")
+                }
+            }
+
+            else -> {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(outfits) { outfit ->
+                        OutfitCard(
+                            outfit = outfit,
+                            onClick = { onOutfitClick(outfit) }
+                        )
+                    }
                 }
             }
         }
     }
+
+
 }
 
 @Composable
-fun OutfitCard(imageUri: Uri) {
-    val context = LocalContext.current
-
-    // Decode the bitmap from the Uri (simple version)
-    val bitmap = remember(imageUri) {
-        context.contentResolver.openInputStream(imageUri)?.use { input ->
-            BitmapFactory.decodeStream(input)
-        }
-    }
-
-    if (bitmap != null) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(9f / 16f)
-                .border(BorderStroke(4.dp, Color.Black), )
-        ) {
+fun OutfitCard(
+    outfit: Outfit,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(0.75f)
+            .clickable(onClick = onClick)
+    ) {
+        // Decode base64 to bitmap
+        val imageBytes = Base64.decode(outfit.imageUrl, Base64.DEFAULT)
+        val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+        if (bitmap != null) {
             Image(
                 bitmap = bitmap.asImageBitmap(),
                 contentDescription = "Outfit photo",
-                modifier = Modifier.fillMaxSize().padding(10.dp),
+                modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
-
             )
-        }
-    } else {
-        // Optional: fallback UI if bitmap can't be decoded
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(260.dp),
-        ) {
+        } else {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                Text("Could not load image")
+                Text("Image unavailable")
             }
         }
     }
 }
-

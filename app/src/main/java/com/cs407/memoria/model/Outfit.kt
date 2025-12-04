@@ -6,5 +6,7 @@ data class Outfit(
     val clothingItemIds: List<String> = emptyList(), // References to ClothingItem IDs
     val timestamp: Long = System.currentTimeMillis(),
     val userId: String = "",
+    val topicName: String = "",
+    val note: String = "",
     val rating: Int? = null
 )
