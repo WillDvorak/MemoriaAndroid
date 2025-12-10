@@ -2,9 +2,7 @@ package com.cs407.memoria
 
 import android.util.Log
 import androidx.compose.runtime.*
-import androidx.compose.material3.*
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -21,6 +19,9 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
+import com.cs407.memoria.model.ClothingItem
+import com.cs407.memoria.ui.TrendingOutfitsScreen
+import com.cs407.memoria.sample.TrendingSampleData
 
 
 private const val TAG = "NavPages"
@@ -52,7 +53,7 @@ fun NavPages(
         // Show duplicate confirmation dialog if needed
         val similarItems by outfitViewModel.similarItemsForConfirmation.collectAsState()
         similarItems?.let { (detectedItem, similar) ->
-            val tempItem = com.cs407.memoria.model.ClothingItem(
+            val tempItem = ClothingItem(
                 category = detectedItem.category,
                 description = "New ${detectedItem.category.name.lowercase()}",
                 dominantColors = detectedItem.colors,
@@ -83,9 +84,7 @@ fun NavPages(
                 HomeScreen(
                     authViewModel = authViewModel,
                     outfitViewModel = outfitViewModel,
-                    onNavigateToWardrobe = {
-                        navController.navigate("wardrobe")
-                    }
+                    navController = navController,
                 )
             }
 
@@ -154,6 +153,24 @@ fun NavPages(
                         )
                     }
                 }
+            }
+            
+            composable ("trending_outfits") {
+
+                TrendingOutfitsScreen(
+                    sections = TrendingSampleData.sections,
+                    onOutfitClick = { outfit ->
+                        // e.g., navigate to detail page later
+                        // navController.navigate("outfit_detail/${outfit.id}")
+                    },
+                    onLikeClick = { outfit ->
+                        // TODO: handle like (update ViewModel, etc.)
+                        // For now, maybe just log or show a Snackbar
+                    },
+                    onBackClick = {
+                        navController.popBackStack()
+                    }
+                )
             }
 
         }

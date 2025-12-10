@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.navigation.NavController
 import com.cs407.memoria.utils.TestImageHelper
 import com.cs407.memoria.viewmodel.AuthViewModel
 import com.cs407.memoria.viewmodel.OutfitViewModel
@@ -32,7 +33,7 @@ import java.io.File
 fun HomeScreen(
     authViewModel: AuthViewModel,
     outfitViewModel: OutfitViewModel,
-    onNavigateToWardrobe: () -> Unit
+    navController: NavController
 ) {
     val topics = listOf("Pets", "Gym", "School", "Outfits")
     var selectedTopic by remember { mutableStateOf(topics.first()) }
@@ -111,7 +112,7 @@ fun HomeScreen(
             Text(
                 text = stringResource(R.string.app_name),
                 style = MaterialTheme.typography.headlineLarge.copy(
-                    fontSize = 40.sp,
+                    fontSize = 60.sp,
                     fontWeight = FontWeight.Bold
                 ),
                 color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -198,18 +199,32 @@ fun HomeScreen(
                     .height(56.dp),
                 enabled = !isLoading
             ) {
-                Text("Take Outfit Photo")
+                Text("Take Outfit Photo", fontSize = 24.sp)
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
             Button(
-                onClick = onNavigateToWardrobe,
+                onClick = { navController.navigate("wardrobe") },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp)
             ) {
-                Text("View Wardrobe")
+                Text("View Wardrobe", fontSize = 24.sp)
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = { navController.navigate("trending_outfits") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+            ) {
+                Text(
+                    text = "See Trending Outfits",
+                    fontSize = 24.sp
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -220,8 +235,9 @@ fun HomeScreen(
                     .fillMaxWidth()
                     .height(56.dp)
             ) {
-                Text("Get Outfit Suggestions")
+                Text("Get Outfit Suggestions", fontSize = 24.sp)
             }
+
         } else {
             Text(
                 text = "Camera permission is required to take photos",
