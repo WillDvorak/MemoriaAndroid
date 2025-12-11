@@ -99,12 +99,11 @@ dependencies {
     implementation("com.github.bumptech.glide:glide:4.16.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
 
-
-
     // Lifecycle
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.7.0")
 
-
+    // Work Manager for notification
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
 
 }
