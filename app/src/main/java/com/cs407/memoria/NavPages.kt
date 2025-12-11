@@ -20,9 +20,11 @@ import com.cs407.memoria.ui.OutfitDetailScreen
 import com.cs407.memoria.ui.OutfitSuggestionScreen
 import com.cs407.memoria.ui.RatingDialog
 import com.cs407.memoria.ui.SignInScreen
+import com.cs407.memoria.ui.TrendingOutfitsScreen
 import com.cs407.memoria.ui.WardrobeScreen
 import com.cs407.memoria.viewmodel.AuthViewModel
 import com.cs407.memoria.viewmodel.OutfitViewModel
+import com.cs407.memoria.sample.TrendingSampleData
 
 private const val TAG = "NavPages"
 
@@ -107,6 +109,9 @@ fun NavPages(
                     },
                     onNavigateToSuggestions = {
                         navController.navigate("suggestions")
+                    },
+                    onNavigateToTrending = {
+                        navController.navigate("trending")
                     }
                 )
             }
@@ -229,6 +234,23 @@ fun NavPages(
                     onDismiss = {
                         outfitViewModel.dismissSuggestion()
                         userId?.let { outfitViewModel.generateSuggestion(it) }
+                    },
+                    onBackClick = {
+                        navController.popBackStack()
+                    }
+                )
+            }
+
+            composable("trending") {
+                TrendingOutfitsScreen(
+                    sections = TrendingSampleData.sections,
+                    onOutfitClick = { outfit ->
+                        // TODO: Navigate to a detail page for trending outfits if needed
+                        Log.d(TAG, "Clicked on trending outfit: ${outfit.id}")
+                    },
+                    onLikeClick = { outfit ->
+                        // TODO: Implement like functionality
+                        Log.d(TAG, "Liked outfit: ${outfit.id}")
                     },
                     onBackClick = {
                         navController.popBackStack()
