@@ -1,10 +1,14 @@
 package com.cs407.memoria
 
+import android.net.Uri
 import android.util.Log
-import androidx.compose.runtime.*
-import androidx.compose.material3.*
-import androidx.compose.ui.Modifier
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -13,15 +17,12 @@ import androidx.navigation.compose.rememberNavController
 import com.cs407.memoria.model.Outfit
 import com.cs407.memoria.ui.DuplicateConfirmationDialog
 import com.cs407.memoria.ui.OutfitDetailScreen
+import com.cs407.memoria.ui.OutfitSuggestionScreen
+import com.cs407.memoria.ui.RatingDialog
 import com.cs407.memoria.ui.SignInScreen
 import com.cs407.memoria.ui.WardrobeScreen
 import com.cs407.memoria.viewmodel.AuthViewModel
 import com.cs407.memoria.viewmodel.OutfitViewModel
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.ui.platform.LocalContext
-
 
 private const val TAG = "NavPages"
 
@@ -65,11 +66,29 @@ fun NavPages(
                 onConfirmExisting = { existingItem ->
                     outfitViewModel.onUserConfirmsExistingItem(existingItem)
                 },
-                onCreateNew = {
-                    outfitViewModel.onUserCreatesNewItem()
+                onCreateNew = { customName ->
+                    // Pass the customName from the dialog
+                    outfitViewModel.onUserCreatesNewItem(customName)
                 },
                 onDismiss = {
                     outfitViewModel.onDismissDuplicateDialog()
+                }
+            )
+        }
+
+        // Show rating dialog after outfit upload is complete
+        val outfitPendingRating by outfitViewModel.outfitPendingRating.collectAsState()
+        outfitPendingRating?.let { outfit ->
+            RatingDialog(
+                currentRating = outfit.rating,
+                onRatingSelected = { rating ->
+                    outfitViewModel.rateOutfit(outfit.id, rating)
+                },
+                onDismiss = {
+                    outfitViewModel.dismissRatingDialog()
+                },
+                onSkip = {
+                    outfitViewModel.skipRating()
                 }
             )
         }
@@ -85,6 +104,9 @@ fun NavPages(
                     outfitViewModel = outfitViewModel,
                     onNavigateToWardrobe = {
                         navController.navigate("wardrobe")
+                    },
+                    onNavigateToSuggestions = {
+                        navController.navigate("suggestions")
                     }
                 )
             }
@@ -134,9 +156,14 @@ fun NavPages(
                 )
             }
 
-
             composable("detail") {
-                selectedOutfit?.let { outfit ->
+                // Get the latest version of the outfit from the list (in case rating was updated)
+                val outfits by outfitViewModel.outfits.collectAsState()
+                val currentOutfit = selectedOutfit?.let { selected ->
+                    outfits.find { it.id == selected.id } ?: selected
+                }
+
+                currentOutfit?.let { outfit ->
                     val clothingItems = outfitViewModel.getClothingItemsForOutfit(outfit)
                     val userId = currentUser?.uid
 
@@ -147,15 +174,67 @@ fun NavPages(
                             onBackClick = {
                                 navController.popBackStack()
                             },
+                            onRenameItem = { itemId, newName ->
+                                outfitViewModel.renameClothingItem(itemId, newName)
+                            },
                             onDeleteClick = {
                                 outfitViewModel.deleteOutfit(outfit, userId)
                                 navController.popBackStack() // go back after deletion
+                            },
+                            onRateOutfit = { rating ->
+                                outfitViewModel.rateOutfit(outfit.id, rating)
                             }
                         )
                     }
                 }
             }
 
+            composable("suggestions") {
+                val suggestion by outfitViewModel.currentSuggestion.collectAsState()
+                val suggestedItems by outfitViewModel.suggestedItems.collectAsState()
+                val thumbnail by outfitViewModel.suggestionThumbnail.collectAsState()
+                val isLoading by outfitViewModel.isSuggestionLoading.collectAsState()
+                val errorMessage by outfitViewModel.suggestionError.collectAsState()
+                val userId = currentUser?.uid
+
+                // Load data when entering the screen
+                LaunchedEffect(userId) {
+                    userId?.let { uid ->
+                        outfitViewModel.loadOutfits(uid)
+                        outfitViewModel.loadClothingItems(uid)
+                        // Generate initial suggestion
+                        outfitViewModel.generateSuggestion(uid)
+                    }
+                }
+
+                // Clean up when leaving
+                DisposableEffect(Unit) {
+                    onDispose {
+                        outfitViewModel.resetSuggestionSession()
+                    }
+                }
+
+                OutfitSuggestionScreen(
+                    suggestion = suggestion,
+                    suggestedItems = suggestedItems,
+                    compositeThumbnail = thumbnail,
+                    isLoading = isLoading,
+                    errorMessage = errorMessage,
+                    onGenerateNew = {
+                        userId?.let { outfitViewModel.generateSuggestion(it) }
+                    },
+                    onSaveSuggestion = { rating ->
+                        userId?.let { outfitViewModel.saveSuggestion(it, rating) }
+                    },
+                    onDismiss = {
+                        outfitViewModel.dismissSuggestion()
+                        userId?.let { outfitViewModel.generateSuggestion(it) }
+                    },
+                    onBackClick = {
+                        navController.popBackStack()
+                    }
+                )
+            }
         }
     }
 }

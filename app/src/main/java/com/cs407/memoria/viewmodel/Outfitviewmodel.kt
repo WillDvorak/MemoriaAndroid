@@ -1,6 +1,7 @@
 package com.cs407.memoria.viewmodel
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
@@ -9,11 +10,15 @@ import com.cs407.memoria.api.VisionApiService
 import com.cs407.memoria.model.ClothingItem
 import com.cs407.memoria.model.DetectedClothingItem
 import com.cs407.memoria.model.Outfit
+import com.cs407.memoria.model.OutfitSuggestion
 import com.cs407.memoria.repository.ClothingItemRepository
 import com.cs407.memoria.repository.OutfitRepository
+import com.cs407.memoria.utils.SuggestionEngine
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class OutfitViewModel(private val apiKey: String) : ViewModel() {
     private val outfitRepository = OutfitRepository()
@@ -39,8 +44,33 @@ class OutfitViewModel(private val apiKey: String) : ViewModel() {
     private val _similarItemsForConfirmation = MutableStateFlow<Pair<DetectedClothingItem, List<Pair<ClothingItem, Float>>>?>(null)
     val similarItemsForConfirmation: StateFlow<Pair<DetectedClothingItem, List<Pair<ClothingItem, Float>>>?> = _similarItemsForConfirmation
 
+    // Rating state - outfit waiting for rating after upload
+    private val _outfitPendingRating = MutableStateFlow<Outfit?>(null)
+    val outfitPendingRating: StateFlow<Outfit?> = _outfitPendingRating
+
+    // Suggestion state
+    private val _currentSuggestion = MutableStateFlow<OutfitSuggestion?>(null)
+    val currentSuggestion: StateFlow<OutfitSuggestion?> = _currentSuggestion
+
+    private val _suggestedItems = MutableStateFlow<List<ClothingItem>>(emptyList())
+    val suggestedItems: StateFlow<List<ClothingItem>> = _suggestedItems
+
+    private val _suggestionThumbnail = MutableStateFlow<Bitmap?>(null)
+    val suggestionThumbnail: StateFlow<Bitmap?> = _suggestionThumbnail
+
+    private val _suggestionError = MutableStateFlow<String?>(null)
+    val suggestionError: StateFlow<String?> = _suggestionError
+
+    private val _isSuggestionLoading = MutableStateFlow(false)
+    val isSuggestionLoading: StateFlow<Boolean> = _isSuggestionLoading
+
+    // Track combinations suggested this session to avoid repeats
+    private val suggestedCombinationsThisSession = mutableSetOf<Set<String>>()
+
     private var currentOutfitImageBase64: String? = null
     private var currentUserId: String? = null
+    private var currentTopicName: String? = null
+    private var currentNote: String? = null
     private var processedItemIds = mutableListOf<String>()
     private var customItemName: String? = null
 
@@ -48,7 +78,171 @@ class OutfitViewModel(private val apiKey: String) : ViewModel() {
         private const val TAG = "OutfitViewModel"
     }
 
+    // ==================== SUGGESTION METHODS ====================
+
+    /**
+     * Generate a new outfit suggestion based on highly-rated outfits.
+     */
+    fun generateSuggestion(userId: String) {
+        viewModelScope.launch {
+            try {
+                _isSuggestionLoading.value = true
+                _suggestionError.value = null
+                _currentSuggestion.value = null
+                _suggestedItems.value = emptyList()
+                _suggestionThumbnail.value = null
+
+                Log.d(TAG, "Generating suggestion for user: $userId")
+
+                // Make sure we have the latest data
+                if (_outfits.value.isEmpty()) {
+                    _outfits.value = outfitRepository.getOutfitsForUser(userId)
+                }
+                if (_clothingItems.value.isEmpty()) {
+                    _clothingItems.value = itemRepository.getClothingItemsForUser(userId)
+                }
+
+                val result = withContext(Dispatchers.Default) {
+                    SuggestionEngine.generateSuggestion(
+                        outfits = _outfits.value,
+                        clothingItems = _clothingItems.value,
+                        userId = userId,
+                        excludeCombinations = suggestedCombinationsThisSession
+                    )
+                }
+
+                when (result) {
+                    is SuggestionEngine.SuggestionResult.Success -> {
+                        _currentSuggestion.value = result.suggestion
+                        _suggestedItems.value = result.items
+
+                        // Add to session exclusions
+                        suggestedCombinationsThisSession.add(result.suggestion.clothingItemIds.toSet())
+
+                        // Generate composite thumbnail
+                        val thumbnail = withContext(Dispatchers.Default) {
+                            SuggestionEngine.createCompositeThumbnail(result.items)
+                        }
+                        _suggestionThumbnail.value = thumbnail
+
+                        Log.d(TAG, "Suggestion generated successfully")
+                    }
+
+                    is SuggestionEngine.SuggestionResult.NotEnoughItems -> {
+                        _suggestionError.value = result.message
+                        Log.d(TAG, "Not enough items: ${result.message}")
+                    }
+
+                    is SuggestionEngine.SuggestionResult.NoNewCombinations -> {
+                        _suggestionError.value = result.message
+                        Log.d(TAG, "No new combinations: ${result.message}")
+                    }
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error generating suggestion", e)
+                _suggestionError.value = "Error generating suggestion: ${e.message}"
+            } finally {
+                _isSuggestionLoading.value = false
+            }
+        }
+    }
+
+    /**
+     * Save the current suggestion as an outfit in the wardrobe.
+     */
+    fun saveSuggestion(userId: String, rating: Int) {
+        viewModelScope.launch {
+            try {
+                _isSuggestionLoading.value = true
+
+                val suggestion = _currentSuggestion.value ?: return@launch
+                val thumbnail = _suggestionThumbnail.value ?: return@launch
+
+                Log.d(TAG, "Saving suggestion with rating: $rating")
+
+                // Convert thumbnail to base64
+                val thumbnailBase64 = withContext(Dispatchers.Default) {
+                    SuggestionEngine.bitmapToBase64(thumbnail)
+                }
+
+                // Create and save the outfit
+                val outfit = Outfit(
+                    imageUrl = thumbnailBase64,
+                    clothingItemIds = suggestion.clothingItemIds,
+                    userId = userId,
+                    topicName = "Suggested Outfit",
+                    note = "Created from suggestion",
+                    rating = rating
+                )
+
+                val outfitId = outfitRepository.saveOutfit(outfit)
+                Log.d(TAG, "Suggestion saved as outfit: $outfitId")
+
+                // Add outfit reference to each clothing item
+                for (itemId in suggestion.clothingItemIds) {
+                    itemRepository.addOutfitReference(itemId, outfitId)
+                }
+
+                // Refresh outfits list
+                loadOutfits(userId)
+
+                // Clear suggestion state
+                clearSuggestion()
+
+                Log.d(TAG, "Suggestion saved successfully")
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error saving suggestion", e)
+                _suggestionError.value = "Error saving suggestion: ${e.message}"
+            } finally {
+                _isSuggestionLoading.value = false
+            }
+        }
+    }
+
+    /**
+     * Dismiss the current suggestion without saving.
+     */
+    fun dismissSuggestion() {
+        // Keep the combination in exclusions so it won't be suggested again this session
+        clearSuggestion()
+    }
+
+    /**
+     * Clear all suggestion state.
+     */
+    fun clearSuggestion() {
+        _currentSuggestion.value = null
+        _suggestedItems.value = emptyList()
+        _suggestionThumbnail.value?.recycle()
+        _suggestionThumbnail.value = null
+        _suggestionError.value = null
+    }
+
+    /**
+     * Reset session exclusions (called when navigating away from suggestions).
+     */
+    fun resetSuggestionSession() {
+        suggestedCombinationsThisSession.clear()
+        clearSuggestion()
+    }
+
+    // ==================== ORIGINAL OUTFIT METHODS ====================
+
+    // Original uploadOutfit function (for backward compatibility)
     fun uploadOutfit(context: Context, imageUri: Uri, userId: String) {
+        uploadOutfit(context, imageUri, userId, "", "")
+    }
+
+    // New uploadOutfit function with topicName and note parameters
+    fun uploadOutfit(
+        context: Context,
+        imageUri: Uri,
+        userId: String,
+        topicName: String,
+        note: String
+    ) {
         viewModelScope.launch {
             try {
                 _isLoading.value = true
@@ -64,6 +258,8 @@ class OutfitViewModel(private val apiKey: String) : ViewModel() {
                 // Store for later use
                 currentOutfitImageBase64 = base64Image
                 currentUserId = userId
+                currentTopicName = topicName
+                currentNote = note
 
                 // 2. Detect clothing items using Vision API
                 Log.d(TAG, "Detecting clothing items...")
@@ -90,16 +286,18 @@ class OutfitViewModel(private val apiKey: String) : ViewModel() {
         }
     }
 
-
     private suspend fun finalizeOutfit() {
         try {
             Log.d(TAG, "Finalizing outfit with ${processedItemIds.size} items")
 
-            // Create outfit with references to clothing items
+            // Create outfit with references to clothing items (no rating yet)
             val outfit = Outfit(
                 imageUrl = currentOutfitImageBase64!!,
                 clothingItemIds = processedItemIds.toList(),
-                userId = currentUserId!!
+                userId = currentUserId!!,
+                topicName = currentTopicName ?: "",
+                note = currentNote ?: "",
+                rating = null // Will be set after user rates
             )
 
             val outfitId = outfitRepository.saveOutfit(outfit)
@@ -114,9 +312,14 @@ class OutfitViewModel(private val apiKey: String) : ViewModel() {
             loadOutfits(currentUserId!!)
             loadClothingItems(currentUserId!!)
 
-            // Clear state
+            // Set the outfit for pending rating (will show rating dialog)
+            val savedOutfit = outfit.copy(id = outfitId)
+            _outfitPendingRating.value = savedOutfit
+
+            // Clear processing state (but keep outfit pending for rating)
             currentOutfitImageBase64 = null
-            currentUserId = null
+            currentTopicName = null
+            currentNote = null
             processedItemIds.clear()
             _pendingItems.value = emptyList()
             customItemName = null
@@ -178,6 +381,7 @@ class OutfitViewModel(private val apiKey: String) : ViewModel() {
         }
     }
 
+    // Overloaded function with customName parameter
     fun onUserCreatesNewItem(customName: String) {
         viewModelScope.launch {
             try {
@@ -187,6 +391,25 @@ class OutfitViewModel(private val apiKey: String) : ViewModel() {
 
                     Log.d(TAG, "User chose to create new item with name: $customName")
                     createNewItem(item, customName)
+                }
+                _similarItemsForConfirmation.value = null
+            } catch (e: Exception) {
+                Log.e(TAG, "Error creating new item", e)
+                _error.value = "Error: ${e.message}"
+            }
+        }
+    }
+
+    // Overloaded function without customName parameter (uses auto-generated name)
+    fun onUserCreatesNewItem() {
+        viewModelScope.launch {
+            try {
+                val pending = _pendingItems.value
+                if (pending.isNotEmpty()) {
+                    val item = pending.first()
+
+                    Log.d(TAG, "User chose to create new item with auto-generated name")
+                    createNewItem(item, null)
                 }
                 _similarItemsForConfirmation.value = null
             } catch (e: Exception) {
@@ -299,7 +522,6 @@ class OutfitViewModel(private val apiKey: String) : ViewModel() {
         }
     }
 
-
     fun renameClothingItem(itemId: String, newName: String) {
         viewModelScope.launch {
             try {
@@ -319,4 +541,64 @@ class OutfitViewModel(private val apiKey: String) : ViewModel() {
         }
     }
 
+    // Rate an outfit (used for both post-upload and editing)
+    fun rateOutfit(outfitId: String, rating: Int) {
+        viewModelScope.launch {
+            try {
+                Log.d(TAG, "Rating outfit: $outfitId with $rating stars")
+
+                // Update in Firebase
+                outfitRepository.updateOutfitRating(outfitId, rating)
+
+                // Update local state
+                _outfits.value = _outfits.value.map { outfit ->
+                    if (outfit.id == outfitId) outfit.copy(rating = rating) else outfit
+                }
+
+                // Clear pending rating if this was the pending outfit
+                if (_outfitPendingRating.value?.id == outfitId) {
+                    _outfitPendingRating.value = null
+                }
+
+                Log.d(TAG, "Outfit rated successfully")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error rating outfit", e)
+                _error.value = "Failed to rate outfit: ${e.message}"
+            }
+        }
+    }
+
+    // Skip rating for pending outfit
+    fun skipRating() {
+        _outfitPendingRating.value = null
+        // Keep userId for potential future use
+    }
+
+    // Dismiss rating dialog without saving
+    fun dismissRatingDialog() {
+        _outfitPendingRating.value = null
+    }
+
+    // Delete outfit function
+    fun deleteOutfit(outfit: Outfit, userId: String) {
+        viewModelScope.launch {
+            try {
+                _isLoading.value = true
+                _error.value = null
+
+                // Delete from repository
+                outfitRepository.deleteOutfit(outfit.id)
+                Log.d(TAG, "Outfit deleted: ${outfit.id}")
+
+                // Refresh the outfits list
+                loadOutfits(userId)
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error deleting outfit", e)
+                _error.value = "Failed to delete outfit: ${e.message}"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
 }

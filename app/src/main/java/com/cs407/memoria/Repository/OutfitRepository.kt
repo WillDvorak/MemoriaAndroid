@@ -47,6 +47,20 @@ class OutfitRepository {
         return outfitId
     }
 
+    // Update outfit rating
+    suspend fun updateOutfitRating(outfitId: String, rating: Int) {
+        val ratingRef = database.getReference("outfits/$outfitId/rating")
+        ratingRef.setValue(rating).await()
+        Log.d(TAG, "Outfit rating updated: $outfitId -> $rating stars")
+    }
+
+    // Update entire outfit (for more complex updates)
+    suspend fun updateOutfit(outfit: Outfit) {
+        val outfitRef = database.getReference("outfits/${outfit.id}")
+        outfitRef.setValue(outfit).await()
+        Log.d(TAG, "Outfit updated: ${outfit.id}")
+    }
+
     //delete outfit from database
     suspend fun deleteOutfit(outfitId: String) {
         val outfitRef = database.getReference("outfits/$outfitId")
